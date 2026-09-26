@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { HAS_DB } from '@/lib/db';
 import { syncMessages, hasBotToken } from '@/lib/discord';
+import { apiError } from '@/lib/guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -35,10 +36,7 @@ async function handle(request: Request) {
     const result = await syncMessages(100);
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {
-    return NextResponse.json(
-      { ok: false, error: err instanceof Error ? err.message : String(err) },
-      { status: 502 },
-    );
+    return apiError(err, 502, 'discord sync failed');
   }
 }
 

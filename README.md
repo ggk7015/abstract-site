@@ -16,9 +16,23 @@ Minecraft 伺服器「抽象」的公開網站，含完整後台（公告、網�
 npm install
 npm run dev          # 本機開發
 npm run typecheck    # tsc --noEmit
+npm run test:redact  # 驗證 secret 遮罩邏輯
+npm run audit:secrets  # 掃描 Git 追蹤檔案是否誤含憑證
+npm run verify       # typecheck + test:redact + audit:secrets + build
 npm run build        # 正式建置
 npm run db:push      # 套用 schema（需 DATABASE_URL）
 ```
+
+## 資訊安全需求
+
+> **任何 secret 都不得以明文出現在對外可見的地方**（HTTP 回應、日誌、例外訊息、Git 追蹤檔案、截圖、對話）。
+
+完整規範見 **[SECURITY.md](./SECURITY.md)**。實作要點：
+
+- 所有錯誤輸出經 `src/lib/redact.ts` 的 `redact()` / `safeError()` 遮罩
+- API 錯誤回應一律用 `apiError()`（`src/lib/guard.ts`），不可直接回傳 `err.message`
+- `npm run audit:secrets` 會在提交前阻擋誤 commit 的憑證
+- `NEXT_PUBLIC_` 前綴 = 會被打包進瀏覽器，禁止承載機密
 
 ## 環境變數
 

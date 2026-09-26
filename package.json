@@ -9,7 +9,10 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "db:push": "tsx scripts/db-push.ts"
+    "db:push": "tsx scripts/db-push.ts",
+    "audit:secrets": "tsx scripts/audit-secrets.ts",
+    "test:redact": "tsx scripts/test-redact.ts",
+    "verify": "npm run typecheck && npm run test:redact && npm run audit:secrets && npm run build"
   },
   "dependencies": {
     "@types/pg": "^8.23.1",

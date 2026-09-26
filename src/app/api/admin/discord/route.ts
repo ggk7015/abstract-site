@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireUser } from '@/lib/guard';
+import { requireUser, apiError } from '@/lib/guard';
 import { syncMessages, hasBotToken, recentMessages } from '@/lib/discord';
 
 export const runtime = 'nodejs';
@@ -11,8 +11,12 @@ export async function GET(request: Request) {
   if (error) return error;
 
   const limit = Number(new URL(request.url).searchParams.get('limit') ?? 30);
-  const messages = await recentMessages(Math.min(limit, 100));
-  return NextResponse.json({ messages, botConfigured: hasBotToken() });
+  try {
+    const messages = await recentMessages(Math.min(limit, 100));
+    return NextResponse.json({ messages, botConfigured: hasBotToken() });
+  } catch (err) {
+    return apiError(err, 500, 'failed to load messages');
+  }
 }
 
 export async function POST() {
@@ -26,6 +30,6 @@ export async function POST() {
     const result = await syncMessages(50);
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 502 });
+    return apiError(err, 502, 'discord sync failed');
   }
 }

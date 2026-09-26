@@ -7,6 +7,10 @@ const MAX_AGE_S = 60 * 60 * 24 * 14;
 
 export type AdminUser = { id: string; username: string };
 
+/**
+ * 資訊安全需求：密碼僅以 scrypt + 隨機 salt 單向雜湊儲存。
+ * 禁止明文儲存、禁止可逆加密、禁止記錄到日誌。
+ */
 export function hashPassword(plain: string): string {
   const salt = randomBytes(16).toString('hex');
   const hash = scryptSync(plain, salt, 64).toString('hex');

@@ -1,4 +1,5 @@
 import { db, HAS_DB } from './db';
+import { safeError } from './redact';
 
 export type DiscordGuildStats = {
   name: string;
@@ -23,6 +24,12 @@ export type DiscordMessage = {
 
 const INVITE = process.env.NEXT_PUBLIC_DISCORD_INVITE || 'https://discord.gg/PgHdMYSxD';
 const DEFAULT_CODE = INVITE.split('/').pop() || 'PgHdMYSxD';
+
+/**
+ * 資訊安全需求：bot token 等同機器人完整權限，屬最高機敏。
+ * 絕對不可出現在 HTTP 回應、日誌或錯誤訊息中；
+ * 錯誤一律經 `safeError()` 遮罩（見 SECURITY.md）。
+ */
 const BOT_TOKEN = process.env.DISCORD_BOT_TOKEN || '';
 const CHANNEL_ID = process.env.DISCORD_CHANNEL_ID || '';
 const API = 'https://discord.com/api/v10';
@@ -44,7 +51,7 @@ export async function guildStats(): Promise<DiscordGuildStats> {
       fetchedAt: new Date().toISOString(),
     };
   } catch (err) {
-    return { ...base, error: err instanceof Error ? err.message : String(err) };
+    return { ...base, error: safeError(err, 80) };
   }
 }
 

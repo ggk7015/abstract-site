@@ -1,4 +1,5 @@
 import net from 'node:net';
+import { safeError } from './redact';
 
 export type McStatus = {
   online: boolean;
@@ -98,15 +99,20 @@ function ping(host: string, port: number, timeoutMs = 6000): Promise<McStatus> {
           latencyMs: Date.now() - started,
         });
       } catch (err) {
-        finish({ online: false, host, port, error: String(err) });
+        finish({ online: false, host, port, error: safeError(err, 60) });
       }
     });
 
     socket.on('timeout', () => finish({ online: false, host, port, error: 'timeout' }));
-    socket.on('error', (err) => finish({ online: false, host, port, error: err.message }));
+    socket.on('error', (err) => finish({ online: false, host, port, error: safeError(err, 60) }));
   });
 }
 
 export function serverStatus(host: string, port: number): Promise<McStatus> {
-  return ping(host, port).catch((err) => ({ online: false, host, port, error: String(err) }));
+  return ping(host, port).catch((err) => ({
+    online: false,
+    host,
+    port,
+    error: safeError(err, 60),
+  }));
 }
