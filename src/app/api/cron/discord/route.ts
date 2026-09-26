@@ -11,10 +11,10 @@ const CRON_SECRET = process.env.CRON_SECRET || '';
 /**
  * Pulls the latest Discord channel messages into the mirror table.
  * Called by Vercel Cron (vercel.json) or any external scheduler:
- *   GET /api/cron/discord            header: authorization: Bearer <CRON_SECRET>
- *   GET /api/cron/discord?key=<CRON_SECRET>
+ *   GET|POST /api/cron/discord    header: authorization: Bearer <CRON_SECRET>
+ *   GET      /api/cron/discord?key=<CRON_SECRET>
  */
-export async function GET(request: Request) {
+async function handle(request: Request) {
   if (!CRON_SECRET) {
     return NextResponse.json({ ok: false, error: 'cron disabled' }, { status: 503 });
   }
@@ -41,3 +41,6 @@ export async function GET(request: Request) {
     );
   }
 }
+
+export const GET = handle;
+export const POST = handle;
