@@ -1,10 +1,14 @@
 import { redirect } from 'next/navigation';
 import { currentUser } from '@/lib/auth';
+import { HAS_DB } from '@/lib/db';
 import { AdminNav } from '@/components/AdminNav';
+import { SetupNotice } from '@/components/admin/SetupNotice';
 
 export const dynamic = 'force-dynamic';
 
 export default async function DashLayout({ children }: { children: React.ReactNode }) {
+  if (!HAS_DB) return <SetupNotice />;
+
   const user = await currentUser();
   if (!user) redirect('/admin/login');
 

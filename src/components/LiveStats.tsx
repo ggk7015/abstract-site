@@ -47,17 +47,17 @@ export function LiveStats() {
       <Cell label="伺服器狀態" loading={loading}>
         <span className="flex items-center gap-2">
           <span
-            className={`h-2 w-2 rounded-full ${online ? 'bg-acid pulse-dot' : 'bg-blood'}`}
+            className={`h-2 w-2 rounded-full ${online ? 'bg-acid pulse-dot' : 'bg-ash'}`}
             aria-hidden
           />
-          <span className={online ? 'text-acid' : 'text-blood'}>
-            {loading ? '連線中…' : online ? '線上' : '無法連線'}
+          <span className={online ? 'text-acid' : 'text-ash'}>
+            {loading ? '連線中…' : online ? '線上' : '雲端無法偵測'}
           </span>
         </span>
       </Cell>
 
       <Cell label="目前在線玩家" loading={loading}>
-        {loading ? '—' : online ? `${s.playersOnline ?? 0} / ${s.playersMax ?? '?'}` : '—'}
+        {loading || !online ? '—' : `${s.playersOnline ?? 0} / ${s.playersMax ?? '?'}`}
       </Cell>
 
       <Cell label="Discord 社群" loading={loading}>

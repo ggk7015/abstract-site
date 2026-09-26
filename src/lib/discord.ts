@@ -1,4 +1,4 @@
-import { db } from './db';
+import { db, HAS_DB } from './db';
 
 export type DiscordGuildStats = {
   name: string;
@@ -113,6 +113,7 @@ export async function storeIncoming(input: DiscordMessage): Promise<boolean> {
 }
 
 export async function recentMessages(limit = 30): Promise<DiscordMessage[]> {
+  if (!HAS_DB) return [];
   const sql = db();
   const rows = await sql<
     { id: string; channel_id: string; channel_name: string | null; author_id: string | null; author_name: string | null; author_avatar: string | null; author_bot: boolean; content: string; created_at: Date }[]

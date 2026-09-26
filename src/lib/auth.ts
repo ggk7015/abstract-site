@@ -1,6 +1,6 @@
 import { scryptSync, randomBytes, timingSafeEqual } from 'node:crypto';
 import { cookies } from 'next/headers';
-import { db } from './db';
+import { db, HAS_DB } from './db';
 
 const COOKIE = 'abs_session';
 const MAX_AGE_S = 60 * 60 * 24 * 14;
@@ -59,15 +59,20 @@ export async function destroySession(token: string): Promise<void> {
 }
 
 export async function currentUser(): Promise<AdminUser | null> {
+  if (!HAS_DB) return null;
   const store = await cookies();
   const token = store.get(COOKIE)?.value;
   if (!token) return null;
-  const sql = db();
-  const rows = await sql<{ id: string; username: string }[]>`
-    SELECT u.id, u.username FROM sessions s
-    JOIN admin_users u ON u.id = s.user_id
-    WHERE s.token = ${token} AND s.expires_at > now()`;
-  return rows[0] ?? null;
+  try {
+    const sql = db();
+    const rows = await sql<{ id: string; username: string }[]>`
+      SELECT u.id, u.username FROM sessions s
+      JOIN admin_users u ON u.id = s.user_id
+      WHERE s.token = ${token} AND s.expires_at > now()`;
+    return rows[0] ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export async function setSessionCookie(token: string): Promise<void> {

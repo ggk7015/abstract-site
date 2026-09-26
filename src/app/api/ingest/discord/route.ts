@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { storeIncoming, type DiscordMessage } from '@/lib/discord';
+import { HAS_DB } from '@/lib/db';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -13,6 +14,7 @@ const SECRET = process.env.INGEST_SECRET || '';
  */
 export async function POST(request: Request) {
   if (!SECRET) return NextResponse.json({ ok: false, error: 'ingest disabled' }, { status: 503 });
+  if (!HAS_DB) return NextResponse.json({ ok: false, error: 'database not configured' }, { status: 503 });
   if (request.headers.get('x-ingest-secret') !== SECRET) {
     return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 });
   }

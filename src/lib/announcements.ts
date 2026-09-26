@@ -1,4 +1,4 @@
-import { db } from './db';
+import { db, HAS_DB } from './db';
 import { slugify, type Announcement } from './announcement-types';
 
 type Row = {
@@ -27,6 +27,7 @@ function sql_cols() {
 }
 
 export async function listPublished(limit = 50): Promise<Announcement[]> {
+  if (!HAS_DB) return [];
   const sql = db();
   const rows = await sql.unsafe<Row[]>(
     `SELECT ${COLUMNS} FROM announcements
@@ -41,6 +42,7 @@ export async function listPublished(limit = 50): Promise<Announcement[]> {
 }
 
 export async function listAll(): Promise<Announcement[]> {
+  if (!HAS_DB) return [];
   const sql = db();
   const rows = await sql.unsafe<Row[]>(
     `SELECT ${COLUMNS} FROM announcements ORDER BY pinned DESC, created_at DESC`,
@@ -49,6 +51,7 @@ export async function listAll(): Promise<Announcement[]> {
 }
 
 export async function getBySlug(slug: string): Promise<Announcement | null> {
+  if (!HAS_DB) return null;
   const sql = db();
   const rows = await sql.unsafe<Row[]>(
     `SELECT ${COLUMNS} FROM announcements WHERE slug = $1 AND status = 'published'`,

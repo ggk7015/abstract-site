@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { db, HAS_DB } from '@/lib/db';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -16,6 +16,8 @@ type Body = {
 const UUID_RE = /^[0-9a-f-]{36}$/i;
 
 export async function POST(request: Request) {
+  if (!HAS_DB) return new NextResponse(null, { status: 204 });
+
   let body: Body;
   try {
     body = await request.json();
