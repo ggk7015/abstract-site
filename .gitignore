@@ -12,3 +12,6 @@ next-env.d.ts
 
 .vercel
 .env*
+
+# 本機管理員憑證（不得提交）
+.admin-credentials

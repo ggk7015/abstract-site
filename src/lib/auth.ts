@@ -25,6 +25,15 @@ export function verifyPassword(plain: string, stored: string): boolean {
   return candidate.length === expected.length && timingSafeEqual(candidate, expected);
 }
 
+/**
+ * 首次登入時建立管理員。
+ *
+ * 資訊安全需求：此函式「僅在帳號不存在時」寫入，刻意不在每次登入覆寫
+ * `password_hash`，以免意外蓋掉管理員自行變更的密碼。
+ *
+ * 因此**只修改 ADMIN_PASSWORD 環境變數並不會輪替既有密碼**。
+ * 輪替密碼請明確執行 `npm run db:set-password`。
+ */
 export async function ensureSeedAdmin(): Promise<AdminUser | null> {
   const username = process.env.ADMIN_USERNAME;
   const password = process.env.ADMIN_PASSWORD;

@@ -21,7 +21,12 @@ npm run audit:secrets  # 掃描 Git 追蹤檔案是否誤含憑證
 npm run verify       # typecheck + test:redact + audit:secrets + build
 npm run build        # 正式建置
 npm run db:push      # 套用 schema（需 DATABASE_URL）
+npm run db:set-password  # 輪替後台管理員密碼（需 DATABASE_URL + ADMIN_PASSWORD）
 ```
+
+> **輪替後台密碼**：修改 Vercel 的 `ADMIN_PASSWORD` **不會**自動套用到資料庫。
+> `ensureSeedAdmin()` 只在帳號不存在時寫入，因此必須執行 `npm run db:set-password`
+> 重新產生 scrypt hash（並會一併撤銷既有 session）。
 
 ## 資訊安全需求
 

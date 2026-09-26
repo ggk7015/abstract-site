@@ -99,18 +99,52 @@ npm run verify          # typecheck + audit:secrets + build
 4. 若已進入 Git 歷史，視為已外洩 —— 輪替是唯一有效補救，`git filter-repo` 不能救回已複製的資料
 5. 記錄於本文件末「事件紀錄」
 
+### 5.1 輪替後台管理員密碼
+
+修改 `ADMIN_PASSWORD` 環境變數**不會**改變資料庫中的既有密碼。
+`ensureSeedAdmin()` 只在帳號不存在時寫入 `admin_users`，因此輪替必須明確執行：
+
+```bash
+npm run db:set-password   # 需 DATABASE_URL 與 ADMIN_PASSWORD
+```
+
+此腳本會重新產生 scrypt hash、覆寫該帳號，並 `DELETE FROM sessions WHERE user_id = ...`
+使所有既有 cookie 立即失效。
+
+### 5.2 `vercel env pull` 的已知陷阱
+
+對以 `--sensitive` 儲存的變數（`ADMIN_PASSWORD`、`ADMIN_USERNAME`、`DISCORD_BOT_TOKEN`、
+`INGEST_SECRET`、`CRON_SECRET`），`vercel env pull` **不會**回傳真實值，而是寫入
+11 字元的佔位符 `[SENSITIVE]`。
+
+後果：
+
+- 不能用 `env pull` 的結果做自動化登入測試（會拿到佔位符而非真實密碼）
+- 不能用 `env pull` 驗證 secret 是否已正確設定
+- 自動化腳本若把佔位符當成密碼，會寫入無效的資料庫 hash
+
+正確做法：secret 一律透過 Vercel Dashboard 或 `vercel env add --value` 設定，
+自動化測試所需的變數應在同一次執行中「產生 → 設定 → 套用 → 驗證」，
+不要依賴 `env pull` 回讀 sensitive 值。
+
 ## 6. 目前部署的 secret 狀態
 
 | Secret | 狀態 |
 | --- | --- |
 | `DISCORD_BOT_TOKEN` | ⚠️ **需輪替** — 2026-09-26 曾於對話中以明文出現 |
-| `ADMIN_PASSWORD` | ⚠️ **需輪替** — 同上 |
+| `ADMIN_PASSWORD` | ✅ 已輪替（2026-09-26），舊值已失效 |
 | `CRON_SECRET` | 未外洩 |
 | `INGEST_SECRET` | 未外洩 |
-| `DATABASE_URL` | 尚未建立 |
+| `DATABASE_URL` | ✅ Neon（Vercel 整合自動注入，pooled） |
+| 本機 `.admin-credentials` | ⚠️ gitignored，僅限本機；共用機器上應刪除 |
 
 ## 事件紀錄
 
 | 日期 | 事件 | 處理 |
 | --- | --- | --- |
 | 2026-09-26 | Discord bot token 與管理員密碼於對話中以明文提供 | 已加入 `redact()` 遮罩層與 `audit:secrets` 掃描；待輪替 |
+| 2026-09-26 | 掃描器規則漏判 Discord token（`\d{17,20}` 假設第一段為數字） | 改為 `[\w-]{24,}` 類 Base64 比對，並加入植入測試 |
+| 2026-09-26 | `db-push` / `db:set-password` 會印出含連線字串的 driver 錯誤 | 改用 `safeError()` 遮罩 |
+| 2026-09-26 | 修改 `ADMIN_PASSWORD` 環境變數無法輪替既有後台密碼 | 新增 `scripts/set-admin-password.ts` 與 `npm run db:set-password` |
+| 2026-09-26 | 誤以為 `vercel env pull` 的 `[SENSITIVE]` 佔位符是真實密碼，導致登入驗證失敗 | 記錄於 §5.2，自動化流程改為同次執行內完成產生與套用 |
+
