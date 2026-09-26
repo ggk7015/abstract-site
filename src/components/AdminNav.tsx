@@ -9,6 +9,7 @@ const NAV = [
   { href: '/admin/announcements', label: '公告管理' },
   { href: '/admin/settings', label: '網站設定' },
   { href: '/admin/discord', label: 'Discord 鏡像' },
+  { href: '/admin/account', label: '帳號安全' },
 ];
 
 export function AdminNav() {

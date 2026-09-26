@@ -24,9 +24,13 @@ npm run db:push      # 套用 schema（需 DATABASE_URL）
 npm run db:set-password  # 輪替後台管理員密碼（需 DATABASE_URL + ADMIN_PASSWORD）
 ```
 
+> `db:push` / `db:set-password` 會自動載入 `.env.local`（`tsx` 本身不會），
+> 但已存在於 shell 的環境變數優先，不會被檔案覆寫。
+
 > **輪替後台密碼**：修改 Vercel 的 `ADMIN_PASSWORD` **不會**自動套用到資料庫。
 > `ensureSeedAdmin()` 只在帳號不存在時寫入，因此必須執行 `npm run db:set-password`
-> 重新產生 scrypt hash（並會一併撤銷既有 session）。
+> 重新產生 scrypt hash（並會一併撤銷既有 session）。此腳本只 `UPDATE` 不 `INSERT`，
+> 帳號不存在時會直接失敗。細節見 [SECURITY.md](SECURITY.md) §5.1。
 
 ## 資訊安全需求
 
@@ -66,9 +70,10 @@ npm run db:set-password  # 輪替後台管理員密碼（需 DATABASE_URL + ADMI
 | 路徑 | 說明 |
 | --- | --- |
 | `/admin` | 洞察總覽：PV/UV、趨勢、來源、裝置、活躍時段熱圖 |
-| `/admin/announcements` | 公告 CRUD |
-| `/admin/settings` | 伺服器資訊、玩法、連結、文案 |
-| `/admin/discord` | Discord 訊息鏡像與手動同步 |
+| `/admin/announcements` | 公告 CRUD，含勾選批次刪除與依狀態清理 |
+| `/admin/settings` | 伺服器資訊、玩法、連結、文案；可逐區或全部還原為預設值 |
+| `/admin/discord` | Discord 訊息鏡像與手動同步，可刪除單則或清空鏡像 |
+| `/admin/account` | 帳號安全：列出 session、撤銷裝置、變更密碼 |
 
 ### API
 | 方法 | 路徑 | 說明 |
@@ -79,9 +84,14 @@ npm run db:set-password  # 輪替後台管理員密碼（需 DATABASE_URL + ADMI
 | `POST` | `/api/ingest/discord` | 外部推入 Discord 訊息（需 `x-ingest-secret`） |
 | `POST` | `/api/admin/login` / `logout` | 後台認證 |
 | `GET/POST/PATCH/DELETE` | `/api/admin/announcements[/:id]` | 公告 API |
-| `GET/PUT` | `/api/admin/settings` | 設定 API |
-| `GET/POST` | `/api/admin/discord` | 讀取 / 同步 Discord 訊息 |
-| `GET` | `/api/admin/insights?days=7\|30\|90` | 洞察報告資料 |
+| `DELETE` | `/api/admin/announcements` | 批次撤銷：body 傳 `{ ids: [...] }` 或 `{ status: 'draft' \| 'archived' }` |
+| `GET/PUT/DELETE` | `/api/admin/settings` | 設定 API；`DELETE` body 傳 `{ keys: [...] }` 或 `{}` 全部還原 |
+| `GET/POST/DELETE` | `/api/admin/discord` | 讀取 / 同步 / 撤銷 Discord 訊息；`DELETE` body 傳 `{ id }` 或 `{}` |
+| `GET/DELETE` | `/api/admin/insights?days=7\|30\|90` | 洞察報告；`DELETE` body 傳 `{ keepDays }` 或 `{ before: ISO }` |
+| `GET/DELETE` | `/api/admin/sessions` | 列出 / 撤銷 session；`DELETE` body 傳 `{ id }` 或 `{}` 撤銷其他所有裝置 |
+| `POST` | `/api/admin/password` | 變更管理員密碼，成功後撤銷所有 session |
+
+> 所有破壞性操作在 UI 上都需經 `ConfirmButton` 確認；批次全刪除需輸入確認字串。
 
 ## 已知限制
 

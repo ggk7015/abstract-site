@@ -6,6 +6,7 @@ import { StatCard } from './StatCard';
 import { TrendChart, type Series } from './TrendChart';
 import { BarList, type Row } from './BarList';
 import { ActivityHeatmap, type HeatCell } from './ActivityHeatmap';
+import { ConfirmButton, DangerZone } from './ConfirmButton';
 
 type Overview = {
   totalPv: number; totalUv: number; todayPv: number; todayUv: number;
@@ -14,6 +15,8 @@ type Overview = {
 };
 
 type Discord = { total: number; today: number; authors: number; series: { day: string; count: number }[]; top: Row[] };
+
+type Stored = { total: number; oldest: string | null; newest: string | null };
 
 type Payload = {
   days: number;
@@ -25,6 +28,7 @@ type Payload = {
   browsers: Row[];
   heat: HeatCell[];
   discord: Discord;
+  stored: Stored;
 };
 
 const RANGES = [7, 30, 90] as const;
@@ -34,6 +38,7 @@ export function Insights() {
   const days = Number(params.get('days') ?? 30);
   const [data, setData] = useState<Payload | null>(null);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/admin/insights?days=${days}`, { cache: 'no-store' });
@@ -47,6 +52,23 @@ export function Insights() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  /** 撤銷追蹤資料；body 省略代表清空全部。 */
+  const purge = async (body: Record<string, unknown>, label: string) => {
+    setNotice('');
+    const res = await fetch('/api/admin/insights', {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      setNotice(((await res.json()) as { error?: string }).error ?? '撤銷失敗');
+      return;
+    }
+    const { removed } = (await res.json()) as { removed: number };
+    setNotice(`${label}：已移除 ${fmt(removed)} 筆`);
+    await load();
+  };
 
   if (error) return <p className="font-mono text-xs text-blood">{error}</p>;
   if (!data) return <p className="font-mono text-xs text-ash-2">載入中…</p>;
@@ -123,6 +145,34 @@ export function Insights() {
       <p className="font-mono text-[0.625rem] text-ash-2">
         平均停留 {Math.round(o.avgDurationMs / 1000)} 秒 · 資料來源：站台自身 page_views 與 discord_messages
       </p>
+
+      <DangerZone
+        title="撤銷追蹤資料"
+        description={`資料庫目前存有 ${fmt(data.stored.total)} 筆瀏覽紀錄${
+          data.stored.oldest ? `，最早 ${new Date(data.stored.oldest).toLocaleDateString('zh-TW')}` : ''
+        }。撤銷後無法復原，且洞察報告會立即歸零。`}
+      >
+        <ConfirmButton
+          label="撤銷 90 天前資料"
+          subject="90 天前的瀏覽紀錄"
+          onConfirm={() => purge({ keepDays: 90 }, '已撤銷 90 天前資料')}
+          disabled={data.stored.total === 0}
+        />
+        <ConfirmButton
+          label="撤銷 30 天前資料"
+          subject="30 天前的瀏覽紀錄"
+          onConfirm={() => purge({ keepDays: 30 }, '已撤銷 30 天前資料')}
+          disabled={data.stored.total === 0}
+        />
+        <ConfirmButton
+          label="清空全部追蹤資料"
+          subject="所有瀏覽紀錄"
+          confirmWord="清空全部"
+          onConfirm={() => purge({}, '已清空全部追蹤資料')}
+          disabled={data.stored.total === 0}
+        />
+        {notice && <span className="font-mono text-xs text-ash-2">{notice}</span>}
+      </DangerZone>
     </div>
   );
 }

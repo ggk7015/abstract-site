@@ -139,3 +139,15 @@ export async function recentMessages(limit = 30): Promise<DiscordMessage[]> {
     createdAt: r.created_at.toISOString(),
   }));
 }
+
+/** 撤銷單則鏡像訊息。回傳是否確實刪除。 */
+export async function deleteMessage(id: string): Promise<boolean> {
+  const rows = await db()<{ id: string }[]>`DELETE FROM discord_messages WHERE id = ${id} RETURNING id`;
+  return rows.length > 0;
+}
+
+/** 撤銷全部鏡像訊息。回傳刪除筆數。 */
+export async function clearMessages(): Promise<number> {
+  const rows = await db()<{ id: string }[]>`DELETE FROM discord_messages RETURNING id`;
+  return rows.length;
+}

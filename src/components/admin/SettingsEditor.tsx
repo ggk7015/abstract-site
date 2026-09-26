@@ -3,12 +3,21 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import type { FeatureGroup, ServerInfo } from '@/lib/content';
+import { ConfirmButton, DangerZone } from './ConfirmButton';
 
 type Payload = {
   server: ServerInfo;
   features: FeatureGroup[];
   siteMeta: Record<string, string>;
   links: Record<string, string>;
+};
+
+/** 設定區塊對應的 settings key 與中文標籤。 */
+const SECTION_LABELS: Record<string, string> = {
+  server: '伺服器資訊',
+  siteMeta: '文案',
+  links: '連結',
+  features: '玩法列表',
 };
 
 export function SettingsEditor({ server, features, siteMeta, links }: Payload) {
@@ -41,10 +50,38 @@ export function SettingsEditor({ server, features, siteMeta, links }: Payload) {
     if (res.ok) router.refresh();
   };
 
+  /** 撤銷後台覆寫：刪除 settings 列後前台回退到程式內建預設值。 */
+  const reset = async (keys?: string[]) => {
+    setMessage('');
+    const res = await fetch('/api/admin/settings', {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(keys ? { keys } : {}),
+    });
+    if (!res.ok) {
+      setMessage(((await res.json()) as { error?: string }).error ?? '還原失敗');
+      return;
+    }
+    const { removed } = (await res.json()) as { removed: number };
+    setMessage(removed > 0 ? `已還原 ${removed} 個設定區塊為預設值` : '沒有需要還原的項目');
+    router.refresh();
+  };
+
+  const resetControl = (key: string) => (
+    <ConfirmButton
+      label={`還原${SECTION_LABELS[key] ?? key}`}
+      subject={`${SECTION_LABELS[key] ?? key}的後台覆寫`}
+      onConfirm={() => reset([key])}
+    />
+  );
+
   return (
     <div className="space-y-8">
       <section className="panel space-y-4 p-5">
-        <h2 className="text-sm text-bone">伺服器資訊</h2>
+        <div className="flex items-baseline justify-between gap-3">
+          <h2 className="text-sm text-bone">伺服器資訊</h2>
+          {resetControl('server')}
+        </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="IP" value={form.server.ip} onChange={(v) => setServer('ip', v)} />
           <Field label="連接埠" value={String(form.server.port)} onChange={(v) => setServer('port', Number(v) || 0)} type="number" />
@@ -65,7 +102,13 @@ export function SettingsEditor({ server, features, siteMeta, links }: Payload) {
       </section>
 
       <section className="panel space-y-4 p-5">
-        <h2 className="text-sm text-bone">網站文案與連結</h2>
+        <div className="flex items-baseline justify-between gap-3">
+          <h2 className="text-sm text-bone">網站文案與連結</h2>
+          <div className="flex gap-2">
+            {resetControl('siteMeta')}
+            {resetControl('links')}
+          </div>
+        </div>
         <Field
           label="首頁簡介"
           value={form.siteMeta.about ?? ''}
@@ -82,7 +125,10 @@ export function SettingsEditor({ server, features, siteMeta, links }: Payload) {
       </section>
 
       <section className="panel space-y-6 p-5">
-        <h2 className="text-sm text-bone">玩法列表（{form.features.length}）</h2>
+        <div className="flex items-baseline justify-between gap-3">
+          <h2 className="text-sm text-bone">玩法列表（{form.features.length}）</h2>
+          {resetControl('features')}
+        </div>
         {form.features.map((f, i) => (
           <div key={f.id} className="space-y-3 border-t border-line pt-5 first:border-0 first:pt-0">
             <div className="grid gap-3 sm:grid-cols-3">
@@ -107,6 +153,18 @@ export function SettingsEditor({ server, features, siteMeta, links }: Payload) {
         </button>
         {message && <span className="font-mono text-xs text-ash-2">{message}</span>}
       </div>
+
+      <DangerZone
+        title="撤銷設定變更"
+        description="刪除後台儲存的設定後，這些區塊會回到程式內建預設值，無法復原。各區塊也可在上方標題列個別還原。"
+      >
+        <ConfirmButton
+          label="全部還原為預設值"
+          subject="所有設定覆寫"
+          confirmWord="全部還原"
+          onConfirm={() => reset()}
+        />
+      </DangerZone>
     </div>
   );
 }

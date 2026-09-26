@@ -1,6 +1,9 @@
 import { scryptSync, randomBytes, timingSafeEqual } from 'node:crypto';
 import { cookies } from 'next/headers';
 import { db, HAS_DB } from './db';
+import { MIN_PASSWORD_LENGTH } from './session-policy';
+
+export { MIN_PASSWORD_LENGTH };
 
 const COOKIE = 'abs_session';
 const MAX_AGE_S = 60 * 60 * 24 * 14;
@@ -102,4 +105,95 @@ export async function setSessionCookie(token: string): Promise<void> {
 export async function clearSessionCookie(): Promise<void> {
   const store = await cookies();
   store.delete(COOKIE);
+}
+
+/** session token 前綴長度；作為 UI 端可見的 session 識別碼。 */
+const FINGERPRINT_LEN = 12;
+
+export type SessionInfo = {
+  id: string;
+  current: boolean;
+  createdAt: string;
+  expiresAt: string;
+};
+
+/**
+ * 列出該帳號所有有效 session。
+ *
+ * 資訊安全需求：**絕不回傳完整 session token**。token 是 64 個 hex 字元的
+ * 完整權限憑證，只輸出前 12 個字元作為識別碼（48 bits 熵，無法單獨用於
+ * 認證），撤銷時以 `left(token, 12) = $id` 比對。
+ */
+export async function listSessions(userId: string): Promise<SessionInfo[]> {
+  const store = await cookies();
+  const current = store.get(COOKIE)?.value ?? '';
+  const rows = await db()<{ token: string; created_at: Date; expires_at: Date }[]>`
+    SELECT token, created_at, expires_at FROM sessions
+    WHERE user_id = ${userId} AND expires_at > now()
+    ORDER BY created_at DESC`;
+  return rows.map((r) => ({
+    id: r.token.slice(0, FINGERPRINT_LEN),
+    current: r.token === current,
+    createdAt: r.created_at.toISOString(),
+    expiresAt: r.expires_at.toISOString(),
+  }));
+}
+
+/**
+ * 撤銷單一 session（以 token 前綴比對）。
+ *
+ * 資訊安全需求：`user_id` 條件不可省略 —— 否則任一已登入者都能猜測
+ * 其他帳號的 token 前綴來撤銷別人的 session（跨使用者授權繞過）。
+ * `id` 另須符合 12 位 hex 格式，避免任意字串進入比對。
+ */
+export async function revokeSession(userId: string, id: string): Promise<boolean> {
+  if (!/^[0-9a-f]{12}$/.test(id)) return false;
+  const rows = await db()<{ token: string }[]>`
+    DELETE FROM sessions
+    WHERE user_id = ${userId} AND left(token, ${FINGERPRINT_LEN}) = ${id}
+    RETURNING token`;
+  return rows.length > 0;
+}
+
+/**
+ * 撤銷「其他」所有 session，保留目前這個。
+ * 回傳撤銷筆數 —— 通常代表某個裝置的憑證已被驅逐。
+ */
+export async function revokeOtherSessions(userId: string): Promise<number> {
+  const store = await cookies();
+  const current = store.get(COOKIE)?.value;
+  if (!current) return 0;
+  const rows = await db()<{ token: string }[]>`
+    DELETE FROM sessions WHERE user_id = ${userId} AND token <> ${current} RETURNING token`;
+  return rows.length;
+}
+
+
+/**
+ * 變更管理員密碼。
+ *
+ * 資訊安全需求：必須先驗證目前密碼；新密碼以 scrypt + 隨機 salt 雜湊；
+ * 成功後撤銷所有 session（含目前），強制所有裝置重新登入。
+ */
+export async function changePassword(
+  userId: string,
+  currentPassword: string,
+  nextPassword: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (nextPassword.length < MIN_PASSWORD_LENGTH) {
+    return { ok: false, error: `新密碼至少需要 ${MIN_PASSWORD_LENGTH} 個字元` };
+  }
+  const sql = db();
+  const rows = await sql<{ password_hash: string }[]>`
+    SELECT password_hash FROM admin_users WHERE id = ${userId}`;
+  if (!rows[0] || !verifyPassword(currentPassword, rows[0].password_hash)) {
+    return { ok: false, error: '目前密碼不正確' };
+  }
+  // 交易：改密碼與撤銷 session 必須同成同敗。若非交易，中途失敗會留下
+  // 「密碼已改但舊 session 仍有效」的危險狀態。
+  await sql.begin(async (tx) => {
+    await tx`UPDATE admin_users SET password_hash = ${hashPassword(nextPassword)} WHERE id = ${userId}`;
+    await tx`DELETE FROM sessions WHERE user_id = ${userId}`;
+  });
+  return { ok: true };
 }

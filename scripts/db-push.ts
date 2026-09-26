@@ -2,6 +2,9 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import postgres from 'postgres';
 import { safeError } from '../src/lib/redact';
+import { loadLocalEnv } from './load-env';
+
+loadLocalEnv();
 
 const url = process.env.DATABASE_URL || process.env.POSTGRES_URL;
 if (!url) {

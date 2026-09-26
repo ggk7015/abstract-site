@@ -132,7 +132,6 @@ export type DiscordActivity = {
   series: { day: string; count: number }[];
   top: Breakdown[];
 };
-
 export async function discordActivity(days = 30): Promise<DiscordActivity> {
   return safe(async () => {
     const sql = db();
@@ -155,5 +154,35 @@ export async function discordActivity(days = 30): Promise<DiscordActivity> {
       series: series.map((r) => ({ day: r.day.toISOString().slice(0, 10), count: Number(r.count) })),
       top: top.map((r) => ({ label: r.author_name, pv: Number(r.count), uv: 0 })),
     };
-  }, { total: 0, today: 0, authors: 0, series: [], top: [] });
+    }, { total: 0, today: 0, authors: 0, series: [], top: [] });
+}
+
+export type PageViewStats = { total: number; oldest: string | null; newest: string | null };
+
+/** 追蹤資料的現況，供後台「資料管理」區顯示即將刪除的範圍。 */
+export async function pageViewStats(): Promise<PageViewStats> {
+  return safe(async () => {
+    const [row] = await db()<{ total: number; oldest: Date | null; newest: Date | null }[]>`
+      SELECT count(*)::bigint AS total, min(created_at) AS oldest, max(created_at) AS newest FROM page_views`;
+    return {
+      total: Number(row?.total ?? 0),
+      oldest: row?.oldest ? row.oldest.toISOString() : null,
+      newest: row?.newest ? row.newest.toISOString() : null,
+    };
+  }, { total: 0, oldest: null, newest: null });
+}
+
+/**
+ * 撤銷流量追蹤資料。
+ * `before` 為 null／未提供時清空全部；否則只刪除該時間點之前的紀錄。
+ * 回傳實際刪除的列數。
+ */
+export async function purgePageViews(before?: Date | null): Promise<number> {
+  const sql = db();
+  if (!before) {
+    const rows = await sql<{ id: number }[]>`DELETE FROM page_views RETURNING 1 AS id`;
+    return rows.length;
+  }
+  const rows = await sql<{ id: number }[]>`DELETE FROM page_views WHERE created_at < ${before} RETURNING 1 AS id`;
+  return rows.length;
 }

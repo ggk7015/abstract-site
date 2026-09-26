@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
-import { requireUser } from '@/lib/guard';
-import { getFeatures, getLinks, getServerInfo, getSiteMeta, saveFeatures, saveLinks, saveServerInfo, saveSiteMeta } from '@/lib/settings';
+import { requireUser, apiError } from '@/lib/guard';
+import {
+  getFeatures, getLinks, getServerInfo, getSiteMeta,
+  overriddenKeys, resetAllSettings, resetSetting,
+  saveFeatures, saveLinks, saveServerInfo, saveSiteMeta,
+  isSettingKey,
+} from '@/lib/settings';
 import type { FeatureGroup, ServerInfo } from '@/lib/content';
 
 export const runtime = 'nodejs';
@@ -10,13 +15,14 @@ export async function GET() {
   const { error } = await requireUser();
   if (error) return error;
 
-  const [server, features, siteMeta, links] = await Promise.all([
+  const [server, features, siteMeta, links, overridden] = await Promise.all([
     getServerInfo(),
     getFeatures(),
     getSiteMeta(),
     getLinks(),
+    overriddenKeys(),
   ]);
-  return NextResponse.json({ server, features, siteMeta, links });
+  return NextResponse.json({ server, features, siteMeta, links, overridden });
 }
 
 function parseServer(raw: Record<string, unknown>): ServerInfo {
@@ -67,4 +73,30 @@ export async function PUT(request: Request) {
     saveLinks(parseStringMap(raw.links)),
   ]);
   return NextResponse.json({ ok: true });
+}
+
+/**
+ * 撤銷後台對設定的覆寫 —— 刪除 `settings` 中的列，前台立即回退到
+ * 程式內建預設值。
+ *
+ *   DELETE /api/admin/settings              → 全部還原
+ *   DELETE /api/admin/settings { keys:[…] } → 只還原指定鍵
+ */
+export async function DELETE(request: Request) {
+  const { error } = await requireUser();
+  if (error) return error;
+
+  const raw = (await request.json().catch(() => ({}))) as { keys?: unknown };
+  const keys = Array.isArray(raw.keys) ? raw.keys.map(String).filter(isSettingKey) : [];
+
+  try {
+    if (!Array.isArray(raw.keys)) {
+      const removed = await resetAllSettings();
+      return NextResponse.json({ ok: true, removed, keys: 'all' });
+    }
+    const removed = (await Promise.all(keys.map(resetSetting))).filter(Boolean).length;
+    return NextResponse.json({ ok: true, removed, keys });
+  } catch (err) {
+    return apiError(err, 500, 'failed to reset settings');
+  }
 }

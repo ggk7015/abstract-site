@@ -42,3 +42,36 @@ export const saveServerInfo = (v: ServerInfo) => writeSetting('server', v);
 export const saveFeatures = (v: FeatureGroup[]) => writeSetting('features', v);
 export const saveSiteMeta = (v: Record<string, string>) => writeSetting('siteMeta', v);
 export const saveLinks = (v: Record<string, string>) => writeSetting('links', v);
+
+/** 可被還原的設定鍵。`resetSetting` 只接受此清單，避免任意 key 注入。 */
+export const SETTING_KEYS = ['server', 'features', 'siteMeta', 'links'] as const;
+export type SettingKey = (typeof SETTING_KEYS)[number];
+
+export function isSettingKey(key: string): key is SettingKey {
+  return (SETTING_KEYS as readonly string[]).includes(key);
+}
+
+/** 列出目前被後台覆寫（存在於 settings 表）的鍵。 */
+export async function overriddenKeys(): Promise<SettingKey[]> {
+  try {
+    const rows = await db()<{ key: string }[]>`SELECT key FROM settings`;
+    return rows.map((r) => r.key).filter(isSettingKey);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * 撤銷單一設定的後台覆寫 —— 刪除該列後 `readSetting` 會自動回退到
+ * `DEFAULT_*` 常數，因此這就是「還原預設值」的實作。
+ */
+export async function resetSetting(key: SettingKey): Promise<boolean> {
+  const rows = await db()<{ key: string }[]>`DELETE FROM settings WHERE key = ${key} RETURNING key`;
+  return rows.length > 0;
+}
+
+/** 撤銷所有後台覆寫，全部還原為程式內建預設值。 */
+export async function resetAllSettings(): Promise<number> {
+  const rows = await db()<{ key: string }[]>`DELETE FROM settings RETURNING key`;
+  return rows.length;
+}

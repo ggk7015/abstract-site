@@ -36,7 +36,7 @@ const SCAN_EXT = /\.(ts|tsx|js|mjs|json|yml|yaml|toml|env|md|sql|css)$/i;
 const SKIP = [/node_modules/, /package-lock\.json$/, /^\.next\//, /^\.vercel\//];
 
 /**
- * 資訊安全需求：以下檔案「按設計」必須出現憑證格式字面��，因此跳過內容掃描。
+ * 資訊安全需求：以下檔案「按設計」必須出現憑證格式字面量，因此跳過內容掃描。
  * 這些檔案本身不得存放任何真實憑證，改動時必須人工複核。
  */
 const PATTERN_ALLOWLIST = [

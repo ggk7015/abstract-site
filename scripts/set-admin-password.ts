@@ -16,6 +16,9 @@
 import postgres from 'postgres';
 import { randomBytes, scryptSync } from 'node:crypto';
 import { safeError } from '../src/lib/redact';
+import { loadLocalEnv } from './load-env';
+
+loadLocalEnv();
 
 const url = process.env.DATABASE_URL || process.env.POSTGRES_URL;
 const username = process.env.ADMIN_USERNAME || 'admin';
@@ -34,20 +37,41 @@ if (password.length < 12) {
   process.exit(1);
 }
 
+/**
+ * 資訊安全需求：`vercel env pull` 對 sensitive 變數只會給出 `[SENSITIVE]`
+ * 佔位符。若把它當密碼雜湊，帳號就會被鎖死（沒有人知道真正的值）；
+ * 若把它當使用者名稱，則會憑空多出一個非預期的管理員帳號。
+ */
+const PLACEHOLDER = '[SENSITIVE]';
+for (const [name, value] of Object.entries({ ADMIN_USERNAME: username, ADMIN_PASSWORD: password })) {
+  if (value === PLACEHOLDER) {
+    console.error(`${name} is the "${PLACEHOLDER}" placeholder from \`vercel env pull\`, not a real value.`);
+    console.error(`Set ${name} explicitly in the shell before running this script.`);
+    process.exit(1);
+  }
+}
+
 const salt = randomBytes(16).toString('hex');
 const hash = `${salt}:${scryptSync(password, salt, 64).toString('hex')}`;
 
 const sql = postgres(url, { ssl: 'require', max: 1, prepare: false });
 
 try {
+  // 只做 UPDATE，**不** INSERT：輪替工具若在使用者名稱打錯時自動開新帳號，
+  // 會產生一個預期外的管理員帳號（真正的舊帳號密碼也沒換到）。
+  // 新增帳號是 `ensureSeedAdmin()` 的職責，見 SECURITY.md。
   const rows = await sql<{ id: string }[]>`
-    INSERT INTO admin_users (username, password_hash)
-    VALUES (${username}, ${hash})
-    ON CONFLICT (username) DO UPDATE SET password_hash = EXCLUDED.password_hash
-    RETURNING id`;
-  // 清除既有 session，確保舊 cookie 立即失效
-  await sql`DELETE FROM sessions WHERE user_id = ${rows[0].id}`;
-  console.log(`Password updated for "${username}". Existing sessions revoked.`);
+    UPDATE admin_users SET password_hash = ${hash} WHERE username = ${username} RETURNING id`;
+
+  if (rows.length === 0) {
+    console.error(`No admin user named "${username}". Create it first via ensureSeedAdmin(),`);
+    console.error('or pass the correct name: $env:ADMIN_USERNAME = "<existing user>".');
+    process.exitCode = 1;
+  } else {
+    // 清除既有 session，確保舊 cookie 立即失效
+    await sql`DELETE FROM sessions WHERE user_id = ${rows[0].id}`;
+    console.log(`Password updated for "${username}". Existing sessions revoked.`);
+  }
 } catch (err) {
   console.error('Failed:', safeError(err));
   process.exitCode = 1;

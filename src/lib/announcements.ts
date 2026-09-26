@@ -101,3 +101,17 @@ export async function remove(id: string): Promise<boolean> {
   const rows = await sql<{ id: string }[]>`DELETE FROM announcements WHERE id = ${id} RETURNING id`;
   return rows.length > 0;
 }
+
+/** 批次撤銷公告。回傳實際刪除筆數。 */
+export async function removeMany(ids: string[]): Promise<number> {
+  if (ids.length === 0) return 0;
+  const rows = await db()<{ id: string }[]>`DELETE FROM announcements WHERE id IN ${db()(ids)} RETURNING id`;
+  return rows.length;
+}
+
+/** 依狀態批次撤銷（例如清掉全部草稿或封存）。回傳實際刪除筆數。 */
+export async function removeByStatus(status: Announcement['status']): Promise<number> {
+  const rows = await db()<{ id: string }[]>`
+    DELETE FROM announcements WHERE status = ${status} RETURNING id`;
+  return rows.length;
+}

@@ -111,6 +111,19 @@ npm run db:set-password   # 需 DATABASE_URL 與 ADMIN_PASSWORD
 此腳本會重新產生 scrypt hash、覆寫該帳號，並 `DELETE FROM sessions WHERE user_id = ...`
 使所有既有 cookie 立即失效。
 
+**此腳本只會 `UPDATE`，不會建立新帳號。** 若 `ADMIN_USERNAME` 不存在就直接失敗並中止，
+以免使用者名稱打錯時憑空多出一個預期外的管理員帳號。新增帳號是 `ensureSeedAdmin()`
+的職責。若值剛好是 `[SENSITIVE]` 佔位符，腳本會拒絕執行（見 §5.2）。
+
+也可以直接在後台「帳號安全」頁變更密碼：需輸入目前密碼，新密碼至少 12 字元，
+成功後**所有** session（含目前裝置）都會被撤銷，必須重新登入。
+此路徑會以單一交易（`sql.begin`）同時更新 hash 與刪除 session，
+不會留下「密碼已改但舊 session 仍有效」的狀態。
+
+⚠️ 後台變更密碼**不會**同步更新 Vercel 的 `ADMIN_PASSWORD`。若日後資料庫重建，
+`ensureSeedAdmin()` 會以環境變數的值重新播種，與後台目前密碼可能不一致。
+重建資料庫後請重新執行 `npm run db:set-password`（§5.1）。
+
 ### 5.2 `vercel env pull` 的已知陷阱
 
 對以 `--sensitive` 儲存的變數（`ADMIN_PASSWORD`、`ADMIN_USERNAME`、`DISCORD_BOT_TOKEN`、
@@ -122,10 +135,22 @@ npm run db:set-password   # 需 DATABASE_URL 與 ADMIN_PASSWORD
 - 不能用 `env pull` 的結果做自動化登入測試（會拿到佔位符而非真實密碼）
 - 不能用 `env pull` 驗證 secret 是否已正確設定
 - 自動化腳本若把佔位符當成密碼，會寫入無效的資料庫 hash
+- 把佔位符當成 `ADMIN_USERNAME` 會建立一個名為 `[SENSITIVE]` 的多餘管理員帳號
+  （2026-09-26 實際發生，`db:set-password` 已加防護並清理該帳號）
 
 正確做法：secret 一律透過 Vercel Dashboard 或 `vercel env add --value` 設定，
 自動化測試所需的變數應在同一次執行中「產生 → 設定 → 套用 → 驗證」，
 不要依賴 `env pull` 回讀 sensitive 值。
+
+補充：`npm run db:push` / `db:set-password` 透過 `scripts/load-env.ts` 自動載入
+`.env.local`（`tsx` 本身不會），但**已存在於 shell 的變數優先**，不會被檔案覆寫。
+
+### 5.3 Session 撤銷
+
+- `DELETE /api/admin/sessions { id }` 以 token 前 12 個 hex 字元比對，
+  查詢**必須**帶 `user_id` 條件，否則任一登入者都能撤銷他人 session。
+- 完整 session token 永不出現在任何 HTTP 回應或日誌中。
+- 密碼變更會撤銷該帳號**所有** session，強制所有裝置重新登入。
 
 ## 6. 目前部署的 secret 狀態
 
@@ -147,4 +172,8 @@ npm run db:set-password   # 需 DATABASE_URL 與 ADMIN_PASSWORD
 | 2026-09-26 | `db-push` / `db:set-password` 會印出含連線字串的 driver 錯誤 | 改用 `safeError()` 遮罩 |
 | 2026-09-26 | 修改 `ADMIN_PASSWORD` 環境變數無法輪替既有後台密碼 | 新增 `scripts/set-admin-password.ts` 與 `npm run db:set-password` |
 | 2026-09-26 | 誤以為 `vercel env pull` 的 `[SENSITIVE]` 佔位符是真實密碼，導致登入驗證失敗 | 記錄於 §5.2，自動化流程改為同次執行內完成產生與套用 |
+| 2026-09-26 | `db:set-password` 的 `INSERT ... ON CONFLICT` 在使用者名稱不存在時會靜默建立新管理員帳號 | 改為只 `UPDATE`，不存在即失敗；並拒絕 `[SENSITIVE]` 佔位符（§5.1）。已清理誤建的 `[SENSITIVE]` 帳號 |
+| 2026-09-26 | `tsx` 不會載入 `.env.local`，導致 `db:push` / `db:set-password` 誤報「Set DATABASE_URL first」 | 新增 `scripts/load-env.ts`（不覆寫既有環境變數） |
+| 2026-09-26 | `revokeSession()` 缺少 `user_id` 條件，可撤銷其他帳號的 session（跨使用者授權繞過） | 補上 `user_id` 條件與 12 位 hex 格式驗證（§5.3） |
+| 2026-09-26 | `changePassword()` 非交易式，中途失敗會留下「密碼已改但舊 session 仍有效」 | 改用 `sql.begin()` 將 hash 更新與 session 撤銷包成單一交易 |
 
