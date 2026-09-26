@@ -16,6 +16,13 @@ const CRON_SECRET = process.env.CRON_SECRET || '';
  *   GET      /api/cron/discord?key=<CRON_SECRET>
  */
 async function handle(request: Request) {
+  // 資訊安全需求：先驗證身分，再透露任何設定狀態，避免未授權者探測組態。
+  const auth = request.headers.get('authorization') || '';
+  const key = new URL(request.url).searchParams.get('key') || '';
+  if (auth !== `Bearer ${CRON_SECRET}` && key !== CRON_SECRET) {
+    return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 });
+  }
+
   if (!CRON_SECRET) {
     return NextResponse.json({ ok: false, error: 'cron disabled' }, { status: 503 });
   }
@@ -24,12 +31,6 @@ async function handle(request: Request) {
   }
   if (!hasBotToken()) {
     return NextResponse.json({ ok: false, error: 'bot token not configured' }, { status: 503 });
-  }
-
-  const auth = request.headers.get('authorization') || '';
-  const key = new URL(request.url).searchParams.get('key') || '';
-  if (auth !== `Bearer ${CRON_SECRET}` && key !== CRON_SECRET) {
-    return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 });
   }
 
   try {

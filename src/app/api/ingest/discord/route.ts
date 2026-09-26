@@ -13,11 +13,12 @@ const SECRET = process.env.INGEST_SECRET || '';
  *   POST /api/ingest/discord   header: x-ingest-secret: <INGEST_SECRET>
  */
 export async function POST(request: Request) {
-  if (!SECRET) return NextResponse.json({ ok: false, error: 'ingest disabled' }, { status: 503 });
-  if (!HAS_DB) return NextResponse.json({ ok: false, error: 'database not configured' }, { status: 503 });
-  if (request.headers.get('x-ingest-secret') !== SECRET) {
+  // 資訊安全需求：先驗證祕密，再透露任何設定狀態。
+  if (SECRET && request.headers.get('x-ingest-secret') !== SECRET) {
     return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 });
   }
+  if (!SECRET) return NextResponse.json({ ok: false, error: 'ingest disabled' }, { status: 503 });
+  if (!HAS_DB) return NextResponse.json({ ok: false, error: 'database not configured' }, { status: 503 });
 
   let payload: Partial<DiscordMessage>;
   try {
